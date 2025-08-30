@@ -44,12 +44,15 @@ import java.util.concurrent.Executors
 import java.util.jar.Manifest
 import androidx.camera.core.Preview
 import android.util.Log
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LifecycleOwner
+import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -169,12 +172,21 @@ class MainActivity : ComponentActivity() {
 
                     imageCapture = ImageCapture.Builder().build()
 
+                    val imageAnalyzer = ImageAnalysis.Builder()
+                        .build()
+                        .also {
+                            it.setAnalyzer(cameraExecutor, LuminosityAnalyzer { luma ->
+                                Toast.makeText(baseContext, "Luminousity ${luma}", 4).show()
+                            })
+                        }
+
+
                     val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                     try {
                         cameraProvider.unbindAll()
                         cameraProvider.bindToLifecycle(
-                            lifecycleOwner, cameraSelector, preview, imageCapture
+                            lifecycleOwner, cameraSelector, preview, imageCapture,
                         )
                     } catch (exc: Exception) {
                         Log.e("CameraXApp", "Use case binding failed", exc)
@@ -207,6 +219,26 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(baseContext, "Permisson request Denied", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+
+    private class LuminosityAnalyzer(private val listener: LumaListener): ImageAnalysis.Analyzer {
+	    private fun ByteBuffer.toByteArray (): ByteArray {
+		    rewind()
+		    val data = ByteArray(remaining())
+		    get(data)
+		    return data
+	    }
+
+	    override fun analyze(image: ImageProxy) {
+		    val buffer = image.planes[0].buffer
+		    val data = buffer.toByteArray()
+		    val pixels = data.map {(it.toInt() and 0xFF)}
+		    val luma = pixels.average()
+
+		    listener(luma)
+		    image.close()
+	    }
     }
 
 
